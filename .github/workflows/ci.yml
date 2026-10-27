@@ -1,0 +1,94 @@
+name: ElectionDesk DevSecOps CI Pipeline
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main]
+
+jobs:
+  security-audit:
+    name: Dependency Audit & Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Scan Backend Dependencies
+        run: |
+          cd backend
+          npm audit --audit-level=high
+
+      - name: Scan Frontend Dependencies
+        run: |
+          cd frontend
+          npm audit --audit-level=high
+
+  backend-tests:
+    name: Backend Test Suite & ASVS Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Backend Dependencies
+        run: |
+          cd backend
+          npm ci
+
+      - name: Run Vitest Security & Functional Test Suite
+        run: |
+          cd backend
+          npm test
+
+  frontend-build:
+    name: Frontend Compilation & Asset Bundling
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Frontend Dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Build Vite Production Assets
+        run: |
+          cd frontend
+          npm run build
+
+  container-scan:
+    name: Docker Image Build & Verification
+    needs: [backend-tests, frontend-build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Multi-Stage Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: electiondesk:latest

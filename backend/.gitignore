@@ -1,0 +1,7 @@
+.env
+.env.local
+node_modules/
+storage/voter_photos/*
+!storage/voter_photos/.gitkeep
+*.log
+.DS_Store

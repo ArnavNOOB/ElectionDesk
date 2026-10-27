@@ -1,0 +1,21 @@
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+*.env
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build artifacts
+dist/
+build/
+.cache/
+
+# Runtime and local storage
+storage/
+*.log
+.DS_Store
+Thumbs.db
+__MACOSX/
