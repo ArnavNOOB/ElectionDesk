@@ -15,10 +15,11 @@ export async function handleLogin(req, res, next) {
     });
 
     if (result.token) {
+      const isProd = process.env.NODE_ENV === 'production';
       res.cookie('session_token', result.token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        secure: isProd,
+        sameSite: isProd ? 'none' : 'lax',
         maxAge: 8 * 60 * 60 * 1000, // 8 hours
       });
     }
@@ -39,10 +40,11 @@ export async function handleMfaVerify(req, res, next) {
       userAgent: req.headers['user-agent'] || '',
     });
 
+    const isProd = process.env.NODE_ENV === 'production';
     res.cookie('session_token', result.token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
       maxAge: 8 * 60 * 60 * 1000,
     });
 

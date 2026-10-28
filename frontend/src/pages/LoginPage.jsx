@@ -28,9 +28,15 @@ export function LoginPage() {
         navigate(from, { replace: true });
       }
     } catch (err) {
-      setError(
-        err.response?.data?.error?.message || err.message || 'Authentication failed. Please check credentials.'
-      );
+      if (err.message === 'Network Error' || !err.response) {
+        setError(
+          'Unable to connect to backend server. If using Render free tier, the server may take ~30-50 seconds to wake up on the first request. Please wait a moment and try again.'
+        );
+      } else {
+        setError(
+          err.response?.data?.error?.message || err.message || 'Authentication failed. Please check credentials.'
+        );
+      }
     } finally {
       setLoading(false);
     }

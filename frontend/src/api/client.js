@@ -1,11 +1,21 @@
 import axios from 'axios';
 
-export const API_BASE_URL =
-  import.meta.env.VITE_API_URL ||
-  (typeof window !== 'undefined' &&
+const rawApiUrl = import.meta.env.VITE_API_URL;
+let calculatedBaseUrl = '/api/v1';
+
+if (rawApiUrl && typeof rawApiUrl === 'string') {
+  // Normalize: strip trailing slashes
+  const trimmed = rawApiUrl.trim().replace(/\/+$/, '');
+  // Auto-append /api/v1 if the user provided root domain (e.g. https://service.onrender.com)
+  calculatedBaseUrl = trimmed.endsWith('/api/v1') ? trimmed : `${trimmed}/api/v1`;
+} else if (
+  typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-    ? 'http://localhost:5001/api/v1'
-    : '/api/v1');
+) {
+  calculatedBaseUrl = 'http://localhost:5001/api/v1';
+}
+
+export const API_BASE_URL = calculatedBaseUrl;
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
