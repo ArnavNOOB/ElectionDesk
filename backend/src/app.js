@@ -85,9 +85,12 @@ export function createApp() {
 
   // 5. Global API Rate Limiter
   app.use('/api/', apiRateLimiter);
+  app.use('/api/v1/', apiRateLimiter);
 
-  // 6. Mount REST API Version 1
+  // 6. Mount REST API Routes (supports /api/v1, /api, and root paths for frontend flexibility)
   app.use('/api/v1', apiV1Routes);
+  app.use('/api', apiV1Routes);
+  app.use('/', apiV1Routes);
 
   // 7. API Root Welcome / Documentation info
   app.get('/', (req, res) => {
