@@ -3,6 +3,7 @@ import {
   handleGetGovernancePolicy,
   handleUpdateGovernancePolicy,
   handleRunRetentionPurge,
+  handleClearSeedData,
 } from '../controllers/governanceController.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
 import { requireRole } from '../middleware/rbacMiddleware.js';
@@ -18,3 +19,5 @@ router.put('/', requireRole(UserRole.SUPER_ADMIN), requireStepUpAuth, handleUpda
 router.post('/purge', requireRole(UserRole.SUPER_ADMIN), requireStepUpAuth, handleRunRetentionPurge);
 
 export default router;
+
+router.post('/clear-seed-data', requireRole(UserRole.SUPER_ADMIN), requireStepUpAuth, handleClearSeedData);

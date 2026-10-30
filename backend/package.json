@@ -6,7 +6,8 @@
     "dev": "tsx watch src/server.js",
     "start": "node src/server.js",
     "test": "node tests/runner.mjs",
-    "create:admin": "node scripts/createAdmin.js"
+    "create:admin": "node scripts/createAdmin.js",
+    "clear:seed": "node scripts/clearSeedData.js"
   },
   "dependencies": {
     "argon2": "^0.41.1",

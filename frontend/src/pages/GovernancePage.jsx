@@ -22,6 +22,8 @@ export function GovernancePage() {
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [purgeResult, setPurgeResult] = useState(null);
+  const [seedClearResult, setSeedClearResult] = useState(null);
+  const [isClearingSeed, setIsClearingSeed] = useState(false);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['governance-policy'],
@@ -76,6 +78,36 @@ export function GovernancePage() {
       setError(err.response?.data?.error?.message || 'Purge execution failed');
     }
   };
+
+  const handleClearSeedData = async (purgeAll = false) => {
+    const confirmMsg = purgeAll
+      ? 'WARNING: This will permanently wipe ALL voters and polling booths from the database. Are you sure you want an empty roll database?'
+      : 'Remove synthetic seed voters, sample booths, and demo accounts from the website?';
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      setError('');
+      setSuccess('');
+      setSeedClearResult(null);
+      setIsClearingSeed(true);
+
+      const stepUpToken = await requestStepUp();
+      if (!stepUpToken) return;
+
+      const res = await governanceApi.clearSeedData(
+        { purgeAllVoters: purgeAll, purgeAllBooths: purgeAll },
+        stepUpToken
+      );
+      setSuccess(res.data.message || 'Seed data cleared successfully');
+      setSeedClearResult(res.data.data);
+    } catch (err) {
+      if (err.message?.includes('cancelled')) return;
+      setError(err.response?.data?.error?.message || 'Failed to clear seed data');
+    } finally {
+      setIsClearingSeed(false);
+    }
+  };
+
 
   if (isLoading || !policyState) {
     return (
@@ -211,6 +243,54 @@ export function GovernancePage() {
           </div>
         )}
       </form>
+
+      {/* Super Admin Clean / Purge Seed Data Card */}
+      {isSuperAdmin && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+          <div className="flex items-center space-x-3">
+            <div className="h-10 w-10 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+              <Trash2 className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">Database Cleanliness & Seed Data Removal</h2>
+              <p className="text-xs text-slate-500">
+                Purge synthetic sample records to ensure only authentic election data is present on the website.
+              </p>
+            </div>
+          </div>
+
+          {seedClearResult && (
+            <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3.5 text-xs text-emerald-800">
+              Cleaned: <strong>{seedClearResult.deletedVoters}</strong> synthetic voters,{' '}
+              <strong>{seedClearResult.deletedBooths}</strong> sample booths, and{' '}
+              <strong>{seedClearResult.deletedUsers}</strong> demo accounts.
+            </div>
+          )}
+
+          <div className="pt-2 flex flex-wrap gap-3">
+            <button
+              type="button"
+              disabled={isClearingSeed}
+              onClick={() => handleClearSeedData(false)}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg bg-rose-600 text-white hover:bg-rose-500 text-xs font-semibold shadow-sm transition disabled:opacity-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>{isClearingSeed ? 'Purging...' : 'Remove Seed / Demo Records'}</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isClearingSeed}
+              onClick={() => handleClearSeedData(true)}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 text-xs font-semibold transition disabled:opacity-50"
+            >
+              <Trash2 className="h-3.5 w-3.5 text-slate-500" />
+              <span>Wipe All Electoral Roll Records (Clean Slate)</span>
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

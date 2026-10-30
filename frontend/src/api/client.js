@@ -145,6 +145,8 @@ export const governanceApi = {
     api.put('/governance', data, { headers: { 'x-step-up-token': stepUpToken } }),
   runPurge: (stepUpToken) =>
     api.post('/governance/purge', {}, { headers: { 'x-step-up-token': stepUpToken } }),
+  clearSeedData: (options, stepUpToken) =>
+    api.post('/governance/clear-seed-data', options || {}, { headers: { 'x-step-up-token': stepUpToken } }),
 };
 
 export const securityApi = {

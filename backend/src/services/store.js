@@ -200,6 +200,19 @@ export const dbStore = {
       }
       return results;
     },
+
+    async deleteOne(filter = {}) {
+      if (!isDbInMemory()) {
+        return UserModel.deleteOne(filter);
+      }
+      for (const [id, user] of memoryStore.users.entries()) {
+        if (matchesFilter(user, filter)) {
+          memoryStore.users.delete(id);
+          return { acknowledged: true, deletedCount: 1 };
+        }
+      }
+      return { acknowledged: true, deletedCount: 0 };
+    },
   },
 
   // POLLING STATIONS
