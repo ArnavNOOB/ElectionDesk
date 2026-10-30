@@ -47,14 +47,14 @@ const APPROVED_TEMPLATES = [
   },
   {
     id: 'REGISTRATION_STATUS_UPDATE',
-    name: 'Electoral Roll Verification Status Notice',
+    name: 'Electoral Roll Registration Advisory',
     category: 'UTILITY',
-    description: 'Informs voter of their physical verification outcome.',
+    description: 'Informs voter of their active electoral registration status.',
     templateText:
-      'Namaste {{voter_name}}, your electoral roll record verification status is currently: {{verification_status}}. Reference ID: {{record_ref}}. For any discrepancies, contact your local Electoral Registration Officer.',
+      'Namaste {{voter_name}}, your electoral roll registration is confirmed: {{registration_status}}. Reference ID: {{record_ref}}. For any discrepancies, contact your local Electoral Registration Officer.',
     defaultVars: (v) => ({
       voter_name: v.fullName || '',
-      verification_status: v.verificationStatus || 'Verified',
+      registration_status: v.isArchived ? 'Archived' : 'Active Registered Elector',
       record_ref: v._id ? String(v._id).slice(-8).toUpperCase() : 'REF-2026',
     }),
   },

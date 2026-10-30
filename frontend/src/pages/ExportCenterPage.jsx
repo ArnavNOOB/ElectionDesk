@@ -16,7 +16,7 @@ export function ExportCenterPage() {
   const { requestStepUp, canExport, user } = useAuth();
 
   const [selectedBooth, setSelectedBooth] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('');
+  const [selectedDuplicateFilter, setSelectedDuplicateFilter] = useState('');
   const [exportFormat, setExportFormat] = useState('xlsx');
   const [isExporting, setIsExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
@@ -45,7 +45,7 @@ export function ExportCenterPage() {
       // 2. Perform authenticated export
       const params = { format: exportFormat };
       if (selectedBooth) params.pollingStationId = selectedBooth;
-      if (selectedStatus) params.verificationStatus = selectedStatus;
+      if (selectedDuplicateFilter) params.duplicateFilter = selectedDuplicateFilter;
 
       const res = await importExportApi.exportVoters(params, stepUpToken);
 
@@ -146,16 +146,17 @@ export function ExportCenterPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Filter by Verification Status</label>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Filter by Duplicate Status</label>
             <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
+              value={selectedDuplicateFilter}
+              onChange={(e) => setSelectedDuplicateFilter(e.target.value)}
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-base sm:text-xs text-slate-700 focus:border-brand-600 focus:outline-none"
             >
-              <option value="">All Verification Statuses</option>
-              <option value="Verified">Verified Only</option>
-              <option value="Pending_Verification">Pending Verification Only</option>
-              <option value="Flagged_Duplicate">Flagged Duplicates Only</option>
+              <option value="">All Records</option>
+              <option value="CLEAN">Clean / Unique Records Only</option>
+              <option value="ALL_DUPLICATES">Flagged Duplicates Only</option>
+              <option value="DUPLICATE_SERIAL_ID">Duplicate Serial ID Only</option>
+              <option value="DUPLICATE_EPIC_NUMBER">Duplicate EPIC Only</option>
             </select>
           </div>
 

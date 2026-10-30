@@ -86,6 +86,12 @@ export function VoterDetailsPage() {
 
   const voter = data;
   const booth = voter.pollingStationId;
+  const isDupSerial =
+    voter.duplicateFlags?.includes('DUPLICATE_SERIAL_ID') ||
+    voter.dataQualityFlags?.includes('DUPLICATE_SERIAL_ID');
+  const isDupEpic =
+    voter.duplicateFlags?.includes('DUPLICATE_EPIC_NUMBER') ||
+    voter.dataQualityFlags?.includes('DUPLICATE_EPIC_NUMBER');
 
   const handleArchiveToggle = async () => {
     try {
@@ -119,7 +125,12 @@ export function VoterDetailsPage() {
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-bold text-slate-900 tracking-tight">{voter.fullName}</h1>
-              <StatusBadge status={voter.isArchived ? 'Archived' : voter.verificationStatus} />
+              {voter.isArchived && <StatusBadge status="Archived" />}
+              {isDupSerial && <StatusBadge status="DUPLICATE_SERIAL_ID" />}
+              {isDupEpic && <StatusBadge status="DUPLICATE_EPIC_NUMBER" />}
+              {!voter.isArchived && !isDupSerial && !isDupEpic && (
+                <StatusBadge status="Unique" />
+              )}
               <FamilyBadge role={voter.familyRole} familyHead={voter.familyHead} />
             </div>
             <p className="text-xs text-slate-500 font-mono mt-1">
@@ -209,6 +220,43 @@ export function VoterDetailsPage() {
               Reason: {voter.archivedReason || 'Administrative retirement'} • Archived on{' '}
               {new Date(voter.archivedAt).toLocaleDateString()}. Under the approved 90-day retention schedule, this
               record is retired from active voter lists but can be restored by an authorized administrator.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Booth Serial Number Conflict Banner */}
+      {isDupSerial && (
+        <div className="rounded-xl bg-amber-50 border border-amber-300 p-4 text-xs text-amber-950 flex items-start space-x-3 shadow-sm">
+          <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1 flex-1">
+            <div className="font-bold text-sm text-amber-900 flex items-center justify-between">
+              <span>⚠️ Duplicate Booth Serial Number Conflict Flagged</span>
+              <NavLink to="/data-quality" className="text-xs font-semibold text-brand-700 hover:underline">
+                Open Duplicate Audit Queue →
+              </NavLink>
+            </div>
+            <p className="text-amber-800">
+              Booth Serial Number <strong>#{voter.boothSerialNumber}</strong> conflicts with another voter record in Polling Booth #{booth?.officialBoothNumber || '—'}.
+              Electoral roll integrity requires each serial ID to uniquely identify one elector per booth.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate EPIC Number Conflict Banner */}
+      {isDupEpic && (
+        <div className="rounded-xl bg-rose-50 border border-rose-300 p-4 text-xs text-rose-950 flex items-start space-x-3 shadow-sm">
+          <AlertTriangle className="h-5 w-5 text-rose-600 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1 flex-1">
+            <div className="font-bold text-sm text-rose-900 flex items-center justify-between">
+              <span>⚠️ Duplicate EPIC Number Conflict Flagged</span>
+              <NavLink to="/data-quality" className="text-xs font-semibold text-brand-700 hover:underline">
+                Open Duplicate Audit Queue →
+              </NavLink>
+            </div>
+            <p className="text-rose-800">
+              EPIC Number <strong>{voter.epicNumber}</strong> is identical to another registered elector in the database.
             </p>
           </div>
         </div>

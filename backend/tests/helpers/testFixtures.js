@@ -282,7 +282,10 @@ export async function setupTestFixtures(options = {}) {
         lastVerifiedAt: null,
       },
       pollingStationId: seededBooths[1]._id || seededBooths[1].id,
-      verificationStatus: 'Flagged_Duplicate',
+      verificationStatus: 'Verified',
+      isDuplicate: true,
+      duplicateFlags: ['DUPLICATE_SERIAL_ID'],
+      dataQualityFlags: ['DUPLICATE_SERIAL_ID'],
     },
     {
       boothSerialNumber: 1,
@@ -416,7 +419,7 @@ export async function setupTestFixtures(options = {}) {
         lastVerifiedAt: null,
       },
       pollingStationId: seededBooths[4]._id || seededBooths[4].id,
-      verificationStatus: 'Pending_Verification',
+      verificationStatus: 'Verified',
     },
     {
       boothSerialNumber: 99,
@@ -442,7 +445,10 @@ export async function setupTestFixtures(options = {}) {
         lastVerifiedAt: null,
       },
       pollingStationId: seededBooths[4]._id || seededBooths[4].id,
-      verificationStatus: 'Flagged_Duplicate',
+      verificationStatus: 'Verified',
+      isDuplicate: true,
+      duplicateFlags: ['DUPLICATE_EPIC_NUMBER'],
+      dataQualityFlags: ['DUPLICATE_EPIC_NUMBER'],
     },
     {
       boothSerialNumber: 1,
@@ -468,7 +474,10 @@ export async function setupTestFixtures(options = {}) {
         lastVerifiedAt: null,
       },
       pollingStationId: seededBooths[0]._id || seededBooths[0].id,
-      verificationStatus: 'Pending_Verification',
+      verificationStatus: 'Verified',
+      isDuplicate: true,
+      duplicateFlags: ['DUPLICATE_SERIAL_ID'],
+      dataQualityFlags: ['DUPLICATE_SERIAL_ID'],
     },
   ];
 
@@ -478,11 +487,11 @@ export async function setupTestFixtures(options = {}) {
     const voterMap = new Map();
     for (const v of syntheticVoters) {
       const { familyHeadRef, ...cleanVoter } = v;
-      let existing = await dbStore.voters.findOne({
-        ...(cleanVoter.pollingStationId
-          ? { pollingStationId: cleanVoter.pollingStationId, boothSerialNumber: cleanVoter.boothSerialNumber }
-          : { epicNumber: cleanVoter.epicNumber }),
-      });
+      let existing = await dbStore.voters.findOne(
+        cleanVoter.epicNumber
+          ? { epicNumber: cleanVoter.epicNumber }
+          : { fullName: cleanVoter.fullName, relativeName: cleanVoter.relativeName }
+      );
       if (!existing) {
         let familyHeadId = null;
         if (cleanVoter.familyRole === 'FM' && familyHeadRef && voterMap.has(familyHeadRef)) {

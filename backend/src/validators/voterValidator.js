@@ -54,10 +54,10 @@ export const createVoterSchema = z.object({
     .optional()
     .default('')
     .transform((val) => (val ? val.trim() : '')),
-  verificationStatus: z
-    .enum(['Verified', 'Pending_Verification', 'Flagged_Duplicate', 'Disputed'])
-    .optional()
-    .default('Pending_Verification'),
+  verificationStatus: z.string().optional().default('Verified'),
+  isDuplicate: z.boolean().optional().default(false),
+  duplicateFlags: z.array(z.string()).optional().default([]),
+  clearDuplicates: z.boolean().optional(),
 });
 
 export const updateVoterSchema = createVoterSchema.partial();

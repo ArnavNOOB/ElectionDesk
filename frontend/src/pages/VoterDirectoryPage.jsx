@@ -50,7 +50,7 @@ export function VoterDirectoryPage() {
   const [page, setPage] = useState(1);
   const [selectedBooth, setSelectedBooth] = useState('');
   const [selectedLocality, setSelectedLocality] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('');
+  const [selectedDuplicateFilter, setSelectedDuplicateFilter] = useState('');
   const [selectedFamilyRole, setSelectedFamilyRole] = useState('');
   const [hasPhoto, setHasPhoto] = useState('');
   const [isArchived, setIsArchived] = useState(false);
@@ -76,7 +76,7 @@ export function VoterDirectoryPage() {
   const activeFilterCount = [
     selectedBooth,
     selectedLocality,
-    selectedStatus,
+    selectedDuplicateFilter,
     selectedFamilyRole,
     hasPhoto,
     isArchived,
@@ -85,7 +85,7 @@ export function VoterDirectoryPage() {
   const handleResetFilters = () => {
     setSelectedBooth('');
     setSelectedLocality('');
-    setSelectedStatus('');
+    setSelectedDuplicateFilter('');
     setSelectedFamilyRole('');
     setHasPhoto('');
     setIsArchived(false);
@@ -113,7 +113,7 @@ export function VoterDirectoryPage() {
       debouncedSearch,
       selectedBooth,
       selectedLocality,
-      selectedStatus,
+      selectedDuplicateFilter,
       selectedFamilyRole,
       hasPhoto,
       isArchived,
@@ -127,7 +127,7 @@ export function VoterDirectoryPage() {
         search: debouncedSearch,
         locality: selectedLocality || undefined,
         pollingStationId: selectedBooth || undefined,
-        verificationStatus: selectedStatus || undefined,
+        duplicateFilter: selectedDuplicateFilter || undefined,
         familyRole: selectedFamilyRole || undefined,
         hasPhoto: hasPhoto || undefined,
         isArchived,
@@ -320,22 +320,22 @@ export function VoterDirectoryPage() {
             </select>
           </div>
 
-          {/* Verification Status Filter */}
+          {/* Duplicate Records Filter */}
           <div>
-            <label className="block text-[11px] font-medium text-slate-500 mb-1 md:hidden">Verification Status</label>
+            <label className="block text-[11px] font-medium text-slate-500 mb-1 md:hidden">Duplicate Records Filter</label>
             <select
-              value={selectedStatus}
+              value={selectedDuplicateFilter}
               onChange={(e) => {
-                setSelectedStatus(e.target.value);
+                setSelectedDuplicateFilter(e.target.value);
                 setPage(1);
               }}
-              className="w-full rounded-lg border border-slate-300 py-2 px-3 text-base sm:text-xs text-slate-700 focus:border-brand-600 focus:outline-none"
+              className="w-full rounded-lg border border-slate-300 py-2 px-3 text-base sm:text-xs text-slate-700 focus:border-brand-600 focus:outline-none font-medium"
             >
-              <option value="">All Verification Statuses</option>
-              <option value="Verified">Verified</option>
-              <option value="Pending_Verification">Pending Verification</option>
-              <option value="Flagged_Duplicate">Flagged Duplicate</option>
-              <option value="Disputed">Disputed</option>
+              <option value="">All Duplicate Statuses</option>
+              <option value="ALL_DUPLICATES">⚠️ Flagged Duplicates (All)</option>
+              <option value="DUPLICATE_SERIAL_ID">⚠️ Duplicate Serial ID Only</option>
+              <option value="DUPLICATE_EPIC_NUMBER">⚠️ Duplicate EPIC Only</option>
+              <option value="CLEAN">✓ Unique Records Only</option>
             </select>
           </div>
 
@@ -515,6 +515,12 @@ export function VoterDirectoryPage() {
               {voters.map((voter) => {
                 const id = voter._id || voter.id;
                 const booth = voter.pollingStationId;
+                const isDupSerial =
+                  voter.duplicateFlags?.includes('DUPLICATE_SERIAL_ID') ||
+                  voter.dataQualityFlags?.includes('DUPLICATE_SERIAL_ID');
+                const isDupEpic =
+                  voter.duplicateFlags?.includes('DUPLICATE_EPIC_NUMBER') ||
+                  voter.dataQualityFlags?.includes('DUPLICATE_EPIC_NUMBER');
                 return (
                   <div key={id} className="p-4 space-y-3 hover:bg-slate-50/60 transition">
                     {/* Header: Photo + Name + Booth Serial */}
@@ -565,17 +571,26 @@ export function VoterDirectoryPage() {
 
                       {/* Booth Serial & Polling Booth Badge */}
                       <div className="text-right flex-shrink-0">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded font-mono font-bold text-xs bg-brand-50 text-brand-800 border border-brand-200">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded font-mono font-bold text-xs ${
+                          isDupSerial
+                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                            : 'bg-brand-50 text-brand-800 border border-brand-200'
+                        }`}>
                           #{voter.boothSerialNumber || '—'}
                         </span>
+                        {isDupSerial && (
+                          <div className="text-[10px] font-bold text-amber-700 mt-0.5">
+                            ⚠️ Duplicate Serial
+                          </div>
+                        )}
                         {booth && (
                           <div className="text-[11px] font-semibold text-brand-700 mt-0.5">
                             Booth #{booth.officialBoothNumber}
                           </div>
                         )}
                         {voter.epicNumber && (
-                          <div className="text-[10px] font-mono text-slate-400 mt-0.5">
-                            {voter.epicNumber}
+                          <div className={`text-[10px] font-mono mt-0.5 ${isDupEpic ? 'text-rose-600 font-bold' : 'text-slate-400'}`}>
+                            {voter.epicNumber} {isDupEpic ? '⚠️ (Duplicate)' : ''}
                           </div>
                         )}
                       </div>
@@ -588,7 +603,12 @@ export function VoterDirectoryPage() {
                         familyHead={voter.familyHead}
                         showHeadName={true}
                       />
-                      <StatusBadge status={voter.isArchived ? 'Archived' : voter.verificationStatus} />
+                      {voter.isArchived && <StatusBadge status="Archived" />}
+                      {isDupSerial && <StatusBadge status="DUPLICATE_SERIAL_ID" />}
+                      {isDupEpic && <StatusBadge status="DUPLICATE_EPIC_NUMBER" />}
+                      {!voter.isArchived && !isDupSerial && !isDupEpic && (
+                        <StatusBadge status="Unique" />
+                      )}
                     </div>
 
                     {/* Correlated Family Notice */}
@@ -689,7 +709,7 @@ export function VoterDirectoryPage() {
                     <th className="py-3 px-4 text-left">Relative Name</th>
                     <th className="py-3 px-4 text-left">Age / Gender</th>
                     <th className="py-3 px-4 text-left">Locality & City</th>
-                    <th className="py-3 px-4 text-left">Status</th>
+                    <th className="py-3 px-4 text-left">Duplicate / Flags</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -697,6 +717,12 @@ export function VoterDirectoryPage() {
                   {voters.map((voter) => {
                     const id = voter._id || voter.id;
                     const booth = voter.pollingStationId;
+                    const isDupSerial =
+                      voter.duplicateFlags?.includes('DUPLICATE_SERIAL_ID') ||
+                      voter.dataQualityFlags?.includes('DUPLICATE_SERIAL_ID');
+                    const isDupEpic =
+                      voter.duplicateFlags?.includes('DUPLICATE_EPIC_NUMBER') ||
+                      voter.dataQualityFlags?.includes('DUPLICATE_EPIC_NUMBER');
                     return (
                       <tr key={id} className="hover:bg-slate-50/70 transition-colors">
                         {/* Photo Thumbnail */}
@@ -719,12 +745,23 @@ export function VoterDirectoryPage() {
 
                         {/* Primary Booth Serial Number */}
                         <td className="py-2.5 px-4 whitespace-nowrap">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded font-mono font-bold text-xs bg-brand-50 text-brand-800 border border-brand-200">
-                            #{voter.boothSerialNumber || '—'}
-                          </span>
+                          <div className="flex items-center space-x-1.5">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded font-mono font-bold text-xs ${
+                              isDupSerial
+                                ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                : 'bg-brand-50 text-brand-800 border border-brand-200'
+                            }`}>
+                              #{voter.boothSerialNumber || '—'}
+                            </span>
+                            {isDupSerial && (
+                              <span title="Conflicting Booth Serial Number in this booth" className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1 py-0.5 rounded border border-amber-200">
+                                ⚠️ Conflict
+                              </span>
+                            )}
+                          </div>
                           {voter.epicNumber && (
-                            <div className="text-[10px] font-mono text-slate-400 mt-0.5">
-                              EPIC: {voter.epicNumber}
+                            <div className={`text-[10px] font-mono mt-0.5 ${isDupEpic ? 'text-rose-600 font-bold' : 'text-slate-400'}`}>
+                              EPIC: {voter.epicNumber} {isDupEpic ? '⚠️ (Duplicate)' : ''}
                             </div>
                           )}
                         </td>
@@ -791,9 +828,16 @@ export function VoterDirectoryPage() {
                           {voter.address?.locality || voter.address?.city || '—'}, {voter.address?.pinCode}
                         </td>
 
-                        {/* Status Badge */}
+                        {/* Duplicate / Flags Column */}
                         <td className="py-2.5 px-4 whitespace-nowrap">
-                          <StatusBadge status={voter.isArchived ? 'Archived' : voter.verificationStatus} />
+                          <div className="flex flex-col gap-1">
+                            {voter.isArchived && <StatusBadge status="Archived" />}
+                            {isDupSerial && <StatusBadge status="DUPLICATE_SERIAL_ID" />}
+                            {isDupEpic && <StatusBadge status="DUPLICATE_EPIC_NUMBER" />}
+                            {!voter.isArchived && !isDupSerial && !isDupEpic && (
+                              <StatusBadge status="Unique" />
+                            )}
+                          </div>
                         </td>
 
                         {/* Quick Action Icons */}

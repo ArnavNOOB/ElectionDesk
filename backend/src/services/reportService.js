@@ -14,6 +14,8 @@ export async function getDashboardOverviewMetrics() {
   let updatedLast7Days = 0;
   let pendingVerification = 0;
   let flaggedDuplicates = 0;
+  let duplicateSerialCount = 0;
+  let duplicateEpicCount = 0;
   let verifiedCount = 0;
 
   const genderDistribution = { Male: 0, Female: 0, 'Third Gender': 0 };
@@ -32,9 +34,23 @@ export async function getDashboardOverviewMetrics() {
     if (createdAt >= sevenDaysAgo) addedLast7Days++;
     if (updatedAt >= sevenDaysAgo && updatedAt > createdAt) updatedLast7Days++;
 
-    if (v.verificationStatus === 'Verified') verifiedCount++;
-    else if (v.verificationStatus === 'Pending_Verification') pendingVerification++;
-    else if (v.verificationStatus === 'Flagged_Duplicate') flaggedDuplicates++;
+    const isDupSerial =
+      v.duplicateFlags?.includes('DUPLICATE_SERIAL_ID') ||
+      v.dataQualityFlags?.includes('DUPLICATE_SERIAL_ID');
+    const isDupEpic =
+      v.duplicateFlags?.includes('DUPLICATE_EPIC_NUMBER') ||
+      v.dataQualityFlags?.includes('DUPLICATE_EPIC_NUMBER');
+    const isAnyDup =
+      v.isDuplicate ||
+      isDupSerial ||
+      isDupEpic ||
+      v.dataQualityFlags?.includes('POTENTIAL_DUPLICATE_DETECTED') ||
+      v.verificationStatus === 'Flagged_Duplicate';
+
+    if (isDupSerial) duplicateSerialCount++;
+    if (isDupEpic) duplicateEpicCount++;
+    if (isAnyDup) flaggedDuplicates++;
+    else verifiedCount++;
 
     if (v.gender && genderDistribution[v.gender] !== undefined) {
       genderDistribution[v.gender]++;
@@ -65,6 +81,8 @@ export async function getDashboardOverviewMetrics() {
     updatedLast7Days,
     pendingVerification,
     flaggedDuplicates,
+    duplicateSerialCount,
+    duplicateEpicCount,
     verifiedCount,
     totalBooths,
     genderDistribution,

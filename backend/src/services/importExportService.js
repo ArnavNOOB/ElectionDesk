@@ -574,7 +574,7 @@ export async function exportVotersToCsv({ filter = {}, actor, reqMeta = {} }) {
     'STATE',
     'PIN_CODE',
     'EPIC_NUMBER',
-    'VERIFICATION_STATUS',
+    'DUPLICATE_STATUS',
     'VOTER_ID',
   ];
 
@@ -584,6 +584,10 @@ export async function exportVotersToCsv({ filter = {}, actor, reqMeta = {} }) {
     const headDisplay = v.familyHead
       ? `#${v.familyHead.boothSerialNumber || ''} ${v.familyHead.fullName || ''}`.trim()
       : '';
+    const isDupSerial = v.duplicateFlags?.includes('DUPLICATE_SERIAL_ID') || v.dataQualityFlags?.includes('DUPLICATE_SERIAL_ID');
+    const isDupEpic = v.duplicateFlags?.includes('DUPLICATE_EPIC_NUMBER') || v.dataQualityFlags?.includes('DUPLICATE_EPIC_NUMBER');
+    const dupStatus = isDupSerial && isDupEpic ? 'DUPLICATE_SERIAL_AND_EPIC' : isDupSerial ? 'DUPLICATE_SERIAL_ID' : isDupEpic ? 'DUPLICATE_EPIC_NUMBER' : 'UNIQUE';
+
     const row = [
       sanitizeCsvCell(v.boothSerialNumber || ''),
       sanitizeCsvCell(v.pollingStationId?.officialBoothNumber || ''),
@@ -600,7 +604,7 @@ export async function exportVotersToCsv({ filter = {}, actor, reqMeta = {} }) {
       sanitizeCsvCell(v.address?.state || ''),
       sanitizeCsvCell(v.address?.pinCode || ''),
       sanitizeCsvCell(v.epicNumber || ''),
-      sanitizeCsvCell(v.verificationStatus),
+      sanitizeCsvCell(dupStatus),
       sanitizeCsvCell(v._id || v.id),
     ];
     csvRows.push(row.map((cell) => `"${cell}"`).join(','));
@@ -635,27 +639,33 @@ export async function exportVotersToXlsx({ filter = {}, actor, reqMeta = {} }) {
     limit: MAX_EXPORT_LIMIT,
   });
 
-  const exportRows = records.map((v) => ({
-    BOOTH_SERIAL_NO: v.boothSerialNumber || '',
-    BOOTH_NUMBER: v.pollingStationId?.officialBoothNumber || '',
-    FULL_NAME: v.fullName,
-    MOBILE_NUMBER: v.mobileNumber || '',
-    RELATIVE_NAME: v.relativeName || '',
-    RELATION: v.relationType || '',
-    FAMILY_ROLE: v.familyRole || 'SM',
-    FAMILY_HEAD: v.familyHead
-      ? `#${v.familyHead.boothSerialNumber || ''} ${v.familyHead.fullName || ''}`.trim()
-      : '',
-    GENDER: v.gender,
-    AGE: v.age,
-    CITY: v.address?.city || '',
-    DISTRICT: v.address?.district || '',
-    STATE: v.address?.state || '',
-    PIN_CODE: v.address?.pinCode || '',
-    EPIC_NUMBER: v.epicNumber || '',
-    VERIFICATION_STATUS: v.verificationStatus,
-    VOTER_ID: v._id || v.id,
-  }));
+  const exportRows = records.map((v) => {
+    const isDupSerial = v.duplicateFlags?.includes('DUPLICATE_SERIAL_ID') || v.dataQualityFlags?.includes('DUPLICATE_SERIAL_ID');
+    const isDupEpic = v.duplicateFlags?.includes('DUPLICATE_EPIC_NUMBER') || v.dataQualityFlags?.includes('DUPLICATE_EPIC_NUMBER');
+    const dupStatus = isDupSerial && isDupEpic ? 'DUPLICATE_SERIAL_AND_EPIC' : isDupSerial ? 'DUPLICATE_SERIAL_ID' : isDupEpic ? 'DUPLICATE_EPIC_NUMBER' : 'UNIQUE';
+
+    return {
+      BOOTH_SERIAL_NO: v.boothSerialNumber || '',
+      BOOTH_NUMBER: v.pollingStationId?.officialBoothNumber || '',
+      FULL_NAME: v.fullName,
+      MOBILE_NUMBER: v.mobileNumber || '',
+      RELATIVE_NAME: v.relativeName || '',
+      RELATION: v.relationType || '',
+      FAMILY_ROLE: v.familyRole || 'SM',
+      FAMILY_HEAD: v.familyHead
+        ? `#${v.familyHead.boothSerialNumber || ''} ${v.familyHead.fullName || ''}`.trim()
+        : '',
+      GENDER: v.gender,
+      AGE: v.age,
+      CITY: v.address?.city || '',
+      DISTRICT: v.address?.district || '',
+      STATE: v.address?.state || '',
+      PIN_CODE: v.address?.pinCode || '',
+      EPIC_NUMBER: v.epicNumber || '',
+      DUPLICATE_STATUS: dupStatus,
+      VOTER_ID: v._id || v.id,
+    };
+  });
 
   const ws = XLSX.utils.json_to_sheet(exportRows);
   ws['!cols'] = [

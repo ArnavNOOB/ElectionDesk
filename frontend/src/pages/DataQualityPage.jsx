@@ -25,7 +25,7 @@ export function DataQualityPage() {
   const { data: duplicateData, refetch: refetchDuplicates } = useQuery({
     queryKey: ['flagged-duplicates'],
     queryFn: async () => {
-      const res = await voterApi.list({ verificationStatus: 'Flagged_Duplicate', limit: 50 });
+      const res = await voterApi.list({ duplicateFilter: 'ALL_DUPLICATES', limit: 50 });
       return res.data.data || [];
     },
   });
@@ -75,9 +75,13 @@ export function DataQualityPage() {
     }
   };
 
-  const handleResolveDuplicate = async (voterId, newStatus) => {
+  const handleResolveDuplicate = async (voterId, action) => {
     try {
-      await voterApi.update(voterId, { verificationStatus: newStatus });
+      if (action === 'CLEAR_FLAG') {
+        await voterApi.update(voterId, { clearDuplicates: true, isDuplicate: false });
+      } else if (action === 'ARCHIVE') {
+        await voterApi.archive(voterId, 'Archived during duplicate resolution audit');
+      }
       setSelectedDuplicateVoter(null);
       setComparisonCandidate(null);
       refetchDuplicates();
@@ -163,7 +167,8 @@ export function DataQualityPage() {
             <table className="min-w-full divide-y divide-slate-200 text-xs">
               <thead className="bg-slate-50 text-slate-500 font-semibold uppercase">
                 <tr>
-                  <th className="py-2.5 px-3 text-left">EPIC Number</th>
+                  <th className="py-2.5 px-3 text-left">Booth Serial & EPIC</th>
+                  <th className="py-2.5 px-3 text-left">Conflict Flag</th>
                   <th className="py-2.5 px-3 text-left">Full Name</th>
                   <th className="py-2.5 px-3 text-left">Relative Name</th>
                   <th className="py-2.5 px-3 text-left">Age / Gender</th>
@@ -174,11 +179,24 @@ export function DataQualityPage() {
               <tbody className="divide-y divide-slate-100 text-slate-700">
                 {duplicates.map((v) => {
                   const id = v._id || v.id;
+                  const isDupSerial =
+                    v.duplicateFlags?.includes('DUPLICATE_SERIAL_ID') ||
+                    v.dataQualityFlags?.includes('DUPLICATE_SERIAL_ID');
+                  const isDupEpic =
+                    v.duplicateFlags?.includes('DUPLICATE_EPIC_NUMBER') ||
+                    v.dataQualityFlags?.includes('DUPLICATE_EPIC_NUMBER');
                   return (
                     <tr key={id} className="hover:bg-slate-50">
                       <td className="py-2.5 px-3 font-mono font-bold text-brand-700">
                         #{v.boothSerialNumber || '—'}
                         {v.epicNumber && <div className="text-[10px] text-slate-400 font-normal">{v.epicNumber}</div>}
+                      </td>
+                      <td className="py-2.5 px-3 whitespace-nowrap">
+                        <div className="flex flex-col gap-1">
+                          {isDupSerial && <StatusBadge status="DUPLICATE_SERIAL_ID" />}
+                          {isDupEpic && <StatusBadge status="DUPLICATE_EPIC_NUMBER" />}
+                          {!isDupSerial && !isDupEpic && <StatusBadge status="Flagged_Duplicate" />}
+                        </div>
                       </td>
                       <td className="py-2.5 px-3 font-medium text-slate-900">{v.fullName}</td>
                       <td className="py-2.5 px-3 text-slate-600">
@@ -347,18 +365,26 @@ export function DataQualityPage() {
               <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   type="button"
-                  onClick={() => handleResolveDuplicate(selectedDuplicateVoter._id || selectedDuplicateVoter.id, 'Verified')}
-                  className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-500"
+                  onClick={() => handleResolveDuplicate(selectedDuplicateVoter._id || selectedDuplicateVoter.id, 'CLEAR_FLAG')}
+                  className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-500 flex items-center justify-center space-x-1"
                 >
-                  Verify as Legitimate (Dismiss Flag)
+                  <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                  <span>Clear Flag (Mark Unique)</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleResolveDuplicate(selectedDuplicateVoter._id || selectedDuplicateVoter.id, 'Disputed')}
-                  className="px-4 py-2 rounded-lg bg-rose-600 text-white text-xs font-semibold hover:bg-rose-500"
+                  onClick={() => handleResolveDuplicate(selectedDuplicateVoter._id || selectedDuplicateVoter.id, 'ARCHIVE')}
+                  className="px-4 py-2 rounded-lg bg-rose-600 text-white text-xs font-semibold hover:bg-rose-500 flex items-center justify-center space-x-1"
                 >
-                  Confirm as Disputed / Duplicate
+                  <AlertTriangle className="h-3.5 w-3.5 mr-1" />
+                  <span>Archive Duplicate</span>
                 </button>
+                <NavLink
+                  to={`/voters/${selectedDuplicateVoter._id || selectedDuplicateVoter.id}/edit`}
+                  className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50 text-center"
+                >
+                  Edit Conflicting Record →
+                </NavLink>
               </div>
             </div>
           </div>

@@ -57,10 +57,21 @@ export async function handleCommitImport(req, res, next) {
 
 export async function handleExportVoters(req, res, next) {
   try {
-    const { verificationStatus, pollingStationId, format = 'csv' } = req.query;
+    const { verificationStatus, duplicateFilter, duplicateType, pollingStationId, format = 'csv' } = req.query;
     const filter = {};
     if (verificationStatus) filter.verificationStatus = verificationStatus;
     if (pollingStationId) filter.pollingStationId = pollingStationId;
+
+    const dupChoice = duplicateFilter || duplicateType;
+    if (dupChoice === 'ALL_DUPLICATES') {
+      filter.dataQualityFlags = { $in: ['DUPLICATE_SERIAL_ID', 'DUPLICATE_EPIC_NUMBER', 'POTENTIAL_DUPLICATE_DETECTED'] };
+    } else if (dupChoice === 'DUPLICATE_SERIAL_ID') {
+      filter.dataQualityFlags = { $in: ['DUPLICATE_SERIAL_ID'] };
+    } else if (dupChoice === 'DUPLICATE_EPIC_NUMBER') {
+      filter.dataQualityFlags = { $in: ['DUPLICATE_EPIC_NUMBER'] };
+    } else if (dupChoice === 'CLEAN') {
+      filter.dataQualityFlags = { $nin: ['DUPLICATE_SERIAL_ID', 'DUPLICATE_EPIC_NUMBER', 'POTENTIAL_DUPLICATE_DETECTED'] };
+    }
 
     if (format.toLowerCase() === 'xlsx') {
       const { buffer, rowCount } = await exportVotersToXlsx({

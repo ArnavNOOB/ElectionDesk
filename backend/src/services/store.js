@@ -70,8 +70,20 @@ function matchesFilter(doc, filter = {}) {
     }
     if (val && typeof val === 'object' && !Array.isArray(val) && !(val instanceof RegExp)) {
       if (val.$ne !== undefined && doc[key] === val.$ne) return false;
-      if (val.$in && !val.$in.includes(doc[key])) return false;
-      if (val.$nin && val.$nin.includes(doc[key])) return false;
+      if (val.$in) {
+        if (Array.isArray(doc[key])) {
+          if (!doc[key].some((item) => val.$in.includes(item))) return false;
+        } else if (!val.$in.includes(doc[key])) {
+          return false;
+        }
+      }
+      if (val.$nin) {
+        if (Array.isArray(doc[key])) {
+          if (doc[key].some((item) => val.$nin.includes(item))) return false;
+        } else if (val.$nin.includes(doc[key])) {
+          return false;
+        }
+      }
       if (val.$regex) {
         const flags = val.$options || '';
         const regex = new RegExp(val.$regex, flags);
@@ -403,7 +415,9 @@ export const dbStore = {
         familyRole: data.familyRole || 'SM',
         familyHeadId: data.familyHeadId || null,
         mobileNumber: data.mobileNumber ? String(data.mobileNumber).trim() : '',
-        verificationStatus: 'Pending_Verification',
+        verificationStatus: data.verificationStatus || 'Verified',
+        isDuplicate: Boolean(data.isDuplicate || (data.duplicateFlags && data.duplicateFlags.length > 0)),
+        duplicateFlags: data.duplicateFlags || [],
         isArchived: false,
         dataQualityFlags: [],
         createdAt: now,

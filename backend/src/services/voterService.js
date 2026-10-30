@@ -28,6 +28,16 @@ export function evaluateDataQuality(voter) {
   if (voter.familyRole === 'FM' && !voter.familyHeadId) {
     flags.push('UNLINKED_FAMILY_MEMBER');
   }
+  if (voter.duplicateFlags && Array.isArray(voter.duplicateFlags)) {
+    for (const df of voter.duplicateFlags) {
+      if (!flags.includes(df)) flags.push(df);
+    }
+  }
+  if (voter.dataQualityFlags && Array.isArray(voter.dataQualityFlags)) {
+    for (const df of voter.dataQualityFlags) {
+      if (!flags.includes(df)) flags.push(df);
+    }
+  }
   return flags;
 }
 
@@ -43,8 +53,9 @@ export async function detectPotentialDuplicates(voterData, excludeId = null) {
 
   // 1. Check duplicate Booth Serial Number within same Polling Station
   if (boothSerialNumber && pollingStationId) {
+    const stationId = pollingStationId?._id || pollingStationId?.id || pollingStationId;
     const serialMatch = await dbStore.voters.findOne({
-      pollingStationId,
+      pollingStationId: stationId,
       boothSerialNumber: Number(boothSerialNumber),
       ...(excludeId ? { _id: { $ne: excludeId } } : {}),
       isArchived: false,
@@ -53,6 +64,8 @@ export async function detectPotentialDuplicates(voterData, excludeId = null) {
       potentialMatches.push({
         candidate: serialMatch,
         confidence: 95,
+        type: 'DUPLICATE_SERIAL_ID',
+        field: 'boothSerialNumber',
         reason: `Duplicate Booth Serial Number #${boothSerialNumber} already assigned in this polling station`,
       });
     }
@@ -60,8 +73,9 @@ export async function detectPotentialDuplicates(voterData, excludeId = null) {
 
   // 2. Check exact EPIC (if supplied)
   if (epicNumber && epicNumber.trim()) {
+    const cleanEpic = epicNumber.trim().toUpperCase();
     const epicMatch = await dbStore.voters.findOne({
-      epicNumber: epicNumber.trim().toUpperCase(),
+      epicNumber: cleanEpic,
       ...(excludeId ? { _id: { $ne: excludeId } } : {}),
       isArchived: false,
     });
@@ -69,7 +83,9 @@ export async function detectPotentialDuplicates(voterData, excludeId = null) {
       potentialMatches.push({
         candidate: epicMatch,
         confidence: 90,
-        reason: 'Identical Official EPIC Number',
+        type: 'DUPLICATE_EPIC_NUMBER',
+        field: 'epicNumber',
+        reason: `Identical Official EPIC Number "${cleanEpic}" already registered to ${epicMatch.fullName}`,
       });
     }
   }
@@ -91,7 +107,8 @@ export async function detectPotentialDuplicates(voterData, excludeId = null) {
         potentialMatches.push({
           candidate: match,
           confidence: 85,
-          reason: 'Identical Full Name and Relative Name',
+          type: 'DUPLICATE_NAME_RELATION',
+          reason: `Identical Full Name "${fullName}" and Relative Name "${relativeName}"`,
         });
       }
     }
@@ -108,6 +125,7 @@ export async function listVoters({
   electoralArea,
   pollingStationId,
   verificationStatus,
+  duplicateFilter,
   familyRole,
   familyHeadId,
   hasPhoto,
@@ -122,6 +140,15 @@ export async function listVoters({
 
   if (verificationStatus) {
     filter.verificationStatus = verificationStatus;
+  }
+  if (duplicateFilter === 'ALL_DUPLICATES') {
+    filter.dataQualityFlags = { $in: ['DUPLICATE_SERIAL_ID', 'DUPLICATE_EPIC_NUMBER', 'POTENTIAL_DUPLICATE_DETECTED'] };
+  } else if (duplicateFilter === 'DUPLICATE_SERIAL_ID') {
+    filter.dataQualityFlags = { $in: ['DUPLICATE_SERIAL_ID'] };
+  } else if (duplicateFilter === 'DUPLICATE_EPIC_NUMBER') {
+    filter.dataQualityFlags = { $in: ['DUPLICATE_EPIC_NUMBER'] };
+  } else if (duplicateFilter === 'CLEAN') {
+    filter.dataQualityFlags = { $nin: ['DUPLICATE_SERIAL_ID', 'DUPLICATE_EPIC_NUMBER', 'POTENTIAL_DUPLICATE_DETECTED'] };
   }
   if (pollingStationId) {
     filter.pollingStationId = pollingStationId;
@@ -239,12 +266,27 @@ export async function createVoter(data, actor, reqMeta = {}) {
   // Detect duplicates
   const duplicates = await detectPotentialDuplicates(data);
   const dataQualityFlags = evaluateDataQuality(data);
+  const duplicateFlags = [];
 
-  let verificationStatus = data.verificationStatus || 'Pending_Verification';
-  if (duplicates.length > 0 && verificationStatus !== 'Flagged_Duplicate') {
-    verificationStatus = 'Flagged_Duplicate';
-    dataQualityFlags.push('POTENTIAL_DUPLICATE_DETECTED');
+  for (const match of duplicates) {
+    if (match.type === 'DUPLICATE_SERIAL_ID' && !duplicateFlags.includes('DUPLICATE_SERIAL_ID')) {
+      duplicateFlags.push('DUPLICATE_SERIAL_ID');
+    }
+    if (match.type === 'DUPLICATE_EPIC_NUMBER' && !duplicateFlags.includes('DUPLICATE_EPIC_NUMBER')) {
+      duplicateFlags.push('DUPLICATE_EPIC_NUMBER');
+    }
   }
+
+  if (duplicates.length > 0 && duplicateFlags.length === 0) {
+    duplicateFlags.push('POTENTIAL_DUPLICATE_DETECTED');
+  }
+
+  for (const df of duplicateFlags) {
+    if (!dataQualityFlags.includes(df)) dataQualityFlags.push(df);
+  }
+
+  const isDuplicate = duplicateFlags.length > 0;
+  const verificationStatus = data.verificationStatus || 'Verified';
 
   const voterPayload = {
     ...data,
@@ -254,6 +296,8 @@ export async function createVoter(data, actor, reqMeta = {}) {
     familyRole,
     familyHeadId,
     verificationStatus,
+    isDuplicate,
+    duplicateFlags,
     dataQualityFlags,
     createdBy: actor?._id || actor?.id,
     updatedBy: actor?._id || actor?.id,
@@ -340,7 +384,20 @@ export async function updateVoter(id, updateData, actor, reqMeta = {}) {
   }
 
   const merged = { ...existing, ...updateData };
-  const dataQualityFlags = evaluateDataQuality(merged);
+  let dataQualityFlags = evaluateDataQuality(merged);
+
+  if (updateData.clearDuplicates === true || updateData.isDuplicate === false) {
+    updateData.isDuplicate = false;
+    updateData.duplicateFlags = [];
+    dataQualityFlags = dataQualityFlags.filter(
+      (f) => !['DUPLICATE_SERIAL_ID', 'DUPLICATE_EPIC_NUMBER', 'POTENTIAL_DUPLICATE_DETECTED'].includes(f)
+    );
+    delete updateData.clearDuplicates;
+  } else if (existing.duplicateFlags && existing.duplicateFlags.length > 0) {
+    for (const df of existing.duplicateFlags) {
+      if (!dataQualityFlags.includes(df)) dataQualityFlags.push(df);
+    }
+  }
 
   const updatedPayload = {
     ...updateData,

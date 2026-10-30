@@ -109,39 +109,39 @@ export function DashboardPage() {
           </div>
         </div>
 
-        {/* Verified Records */}
+        {/* Duplicate Booth Serial Numbers */}
         <div className="rounded-xl bg-white p-5 shadow-sm border border-slate-200">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Verified Records</span>
-            <div className="h-8 w-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <UserCheck className="h-4 w-4" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className="text-2xl font-bold text-slate-900">{metrics.verifiedCount || 0}</div>
-            <p className="text-xs text-slate-500 mt-1">
-              {metrics.totalRecords
-                ? `${Math.round(((metrics.verifiedCount || 0) / metrics.totalRecords) * 100)}% verification rate`
-                : '100% verified'}
-            </p>
-          </div>
-        </div>
-
-        {/* Pending Verification */}
-        <div className="rounded-xl bg-white p-5 shadow-sm border border-slate-200">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Pending Verification</span>
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Duplicate Serial IDs</span>
             <div className="h-8 w-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-              <Clock className="h-4 w-4" />
+              <AlertTriangle className="h-4 w-4" />
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-2xl font-bold text-slate-900">{metrics.pendingVerification || 0}</div>
-            <p className="text-xs text-amber-600 mt-1">Awaiting field officer review</p>
+            <div className="text-2xl font-bold text-amber-600">{metrics.duplicateSerialCount || 0}</div>
+            <NavLink to="/voters?duplicateFilter=DUPLICATE_SERIAL_ID" className="text-xs text-brand-600 hover:underline mt-1 block">
+              Filter duplicate serials →
+            </NavLink>
           </div>
         </div>
 
-        {/* Potential Duplicates & Alerts */}
+        {/* Duplicate EPIC Numbers */}
+        <div className="rounded-xl bg-white p-5 shadow-sm border border-slate-200">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Duplicate EPICs</span>
+            <div className="h-8 w-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
+              <ShieldAlert className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="text-2xl font-bold text-purple-600">{metrics.duplicateEpicCount || 0}</div>
+            <NavLink to="/voters?duplicateFilter=DUPLICATE_EPIC_NUMBER" className="text-xs text-brand-600 hover:underline mt-1 block">
+              Filter duplicate EPICs →
+            </NavLink>
+          </div>
+        </div>
+
+        {/* Total Flagged Duplicates & Quality Queue */}
         <div className="rounded-xl bg-white p-5 shadow-sm border border-slate-200">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Flagged Duplicates</span>

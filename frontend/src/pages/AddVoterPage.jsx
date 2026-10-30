@@ -22,7 +22,6 @@ export function AddVoterPage() {
   const [pollingStationId, setPollingStationId] = useState('');
   const [familyRole, setFamilyRole] = useState('SM');
   const [familyHeadId, setFamilyHeadId] = useState('');
-  const [verificationStatus, setVerificationStatus] = useState('Pending_Verification');
 
   const [address, setAddress] = useState({
     houseNumber: '',
@@ -91,17 +90,17 @@ export function AddVoterPage() {
     return Object.keys(errs).length === 0;
   };
 
-  // Check potential duplicates on blur
+  // Check potential duplicates on blur of Serial, EPIC, or Names
   const handleCheckDuplicates = async () => {
-    if (!fullName || !relativeName) return;
+    if (!boothSerialNumber && !epicNumber && (!fullName || !relativeName)) return;
     try {
       const res = await voterApi.checkDuplicates({
         boothSerialNumber: parseInt(boothSerialNumber, 10) || null,
         pollingStationId: pollingStationId || null,
-        epicNumber: epicNumber.trim(),
-        fullName,
-        relativeName,
-        age: parseInt(age, 10),
+        epicNumber: (epicNumber || '').trim(),
+        fullName: (fullName || '').trim(),
+        relativeName: (relativeName || '').trim(),
+        age: parseInt(age, 10) || 25,
         address,
       });
       const matches = res.data.data || [];
@@ -135,7 +134,6 @@ export function AddVoterPage() {
         dateOfBirth: dateOfBirth || null,
         address,
         pollingStationId: pollingStationId || null,
-        verificationStatus,
       };
 
       const res = await voterApi.create(payload);
@@ -179,18 +177,39 @@ export function AddVoterPage() {
 
       {/* Duplicate Warning Alert */}
       {duplicateWarning && (
-        <div className="rounded-lg bg-amber-50 border border-amber-300 p-4 text-xs text-amber-800 space-y-1">
-          <div className="flex items-center font-semibold text-amber-900">
-            <AlertTriangle className="h-4 w-4 mr-1.5 text-amber-600" />
-            Possible Duplicate Detected ({duplicateWarning.confidence}% Match)
+        <div className={`rounded-xl border p-4 text-xs space-y-1.5 shadow-sm ${
+          duplicateWarning.type === 'DUPLICATE_SERIAL_ID'
+            ? 'bg-amber-50 border-amber-300 text-amber-900'
+            : duplicateWarning.type === 'DUPLICATE_EPIC_NUMBER'
+            ? 'bg-rose-50 border-rose-300 text-rose-900'
+            : 'bg-purple-50 border-purple-300 text-purple-900'
+        }`}>
+          <div className="flex items-center font-bold text-sm">
+            <AlertTriangle className={`h-4 w-4 mr-1.5 flex-shrink-0 ${
+              duplicateWarning.type === 'DUPLICATE_SERIAL_ID'
+                ? 'text-amber-600'
+                : duplicateWarning.type === 'DUPLICATE_EPIC_NUMBER'
+                ? 'text-rose-600'
+                : 'text-purple-600'
+            }`} />
+            <span>
+              {duplicateWarning.type === 'DUPLICATE_SERIAL_ID'
+                ? '⚠️ Conflicting Booth Serial Number Detected'
+                : duplicateWarning.type === 'DUPLICATE_EPIC_NUMBER'
+                ? '⚠️ Conflicting EPIC Number Detected'
+                : '⚠️ Potential Duplicate Record Detected'}
+              {' '}({duplicateWarning.confidence}% Match)
+            </span>
           </div>
-          <p>
-            An existing voter record was matched: <strong>{duplicateWarning.candidate.fullName}</strong> (EPIC:{' '}
-            <span className="font-mono">{duplicateWarning.candidate.epicNumber}</span>). Reason:{' '}
-            {duplicateWarning.reason}.
+          <p className="leading-relaxed">
+            Existing voter record matched: <strong>{duplicateWarning.candidate.fullName}</strong>
+            {duplicateWarning.candidate.boothSerialNumber && ` (Booth Serial: #${duplicateWarning.candidate.boothSerialNumber})`}
+            {duplicateWarning.candidate.epicNumber && ` (EPIC: ${duplicateWarning.candidate.epicNumber})`}.
+            <br />
+            <strong>Reason:</strong> {duplicateWarning.reason}.
           </p>
-          <p className="text-amber-700 text-[11px]">
-            If you proceed, this new entry will be flagged for human review in the Duplicate Review queue.
+          <p className="text-[11px] opacity-80">
+            If you proceed with registration, this entry will be flagged for review in the Duplicate Records audit queue.
           </p>
         </div>
       )}
@@ -335,19 +354,6 @@ export function AddVoterPage() {
                 onChange={(e) => setDateOfBirth(e.target.value)}
                 className="w-full rounded-md border border-slate-300 px-3 py-2 text-base sm:text-sm focus:border-brand-600 focus:outline-none"
               />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Verification Status</label>
-              <select
-                value={verificationStatus}
-                onChange={(e) => setVerificationStatus(e.target.value)}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-base sm:text-sm focus:border-brand-600 focus:outline-none"
-              >
-                <option value="Pending_Verification">Pending Verification</option>
-                <option value="Verified">Verified (Officially Audited)</option>
-                <option value="Flagged_Duplicate">Flagged Duplicate</option>
-              </select>
             </div>
           </div>
         </div>

@@ -49,7 +49,7 @@ describe('Voter Records CRUD & Business Logic Tests', () => {
     expect(newVoter).toBeDefined();
     expect(newVoter.boothSerialNumber).toBe(101);
     expect(newVoter.epicNumber).toBe('KAR5501928');
-    expect(newVoter.verificationStatus).toBe('Pending_Verification');
+    expect(newVoter.isDuplicate).toBe(false);
 
     const fetched = await getVoterById(newVoter._id || newVoter.id);
     expect(fetched.fullName).toBe('Sunita Radhakrishnan');
@@ -169,6 +169,26 @@ describe('Voter Records CRUD & Business Logic Tests', () => {
 
     const filterRes = await listVoters({ verificationStatus: 'Verified' });
     expect(filterRes.records.every((v) => v.verificationStatus === 'Verified')).toBe(true);
+
+    const dupSerialRes = await listVoters({ duplicateFilter: 'DUPLICATE_SERIAL_ID' });
+    expect(dupSerialRes.records.length).toBeGreaterThan(0);
+    expect(
+      dupSerialRes.records.every(
+        (v) =>
+          (v.duplicateFlags && v.duplicateFlags.includes('DUPLICATE_SERIAL_ID')) ||
+          (v.dataQualityFlags && v.dataQualityFlags.includes('DUPLICATE_SERIAL_ID'))
+      )
+    ).toBe(true);
+
+    const dupEpicRes = await listVoters({ duplicateFilter: 'DUPLICATE_EPIC_NUMBER' });
+    expect(dupEpicRes.records.length).toBeGreaterThan(0);
+    expect(
+      dupEpicRes.records.every(
+        (v) =>
+          (v.duplicateFlags && v.duplicateFlags.includes('DUPLICATE_EPIC_NUMBER')) ||
+          (v.dataQualityFlags && v.dataQualityFlags.includes('DUPLICATE_EPIC_NUMBER'))
+      )
+    ).toBe(true);
   });
 
   it('manages Family Notation (FH, FM, SM) and enforces FM relationship validation', async () => {

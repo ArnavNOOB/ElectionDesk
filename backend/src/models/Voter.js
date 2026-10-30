@@ -105,8 +105,17 @@ const voterSchema = new mongoose.Schema(
     },
     verificationStatus: {
       type: String,
-      enum: ['Verified', 'Pending_Verification', 'Flagged_Duplicate', 'Disputed'],
-      default: 'Pending_Verification',
+      default: 'Verified',
+      index: true,
+    },
+    isDuplicate: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    duplicateFlags: {
+      type: [String],
+      default: [],
       index: true,
     },
     dataQualityFlags: {
@@ -194,6 +203,8 @@ voterSchema.index({ familyRole: 1, familyHeadId: 1 });
 voterSchema.index({ fullName: 'text', epicNumber: 'text' });
 voterSchema.index({ 'address.city': 1, 'address.pinCode': 1 });
 voterSchema.index({ isArchived: 1, verificationStatus: 1 });
+voterSchema.index({ isArchived: 1, isDuplicate: 1 });
+voterSchema.index({ isArchived: 1, duplicateFlags: 1 });
 
 export const VoterModel = mongoose.models.Voter || mongoose.model('Voter', voterSchema);
 export default VoterModel;
