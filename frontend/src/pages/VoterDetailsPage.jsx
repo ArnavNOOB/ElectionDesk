@@ -123,7 +123,7 @@ export function VoterDetailsPage() {
               <FamilyBadge role={voter.familyRole} familyHead={voter.familyHead} />
             </div>
             <p className="text-xs text-slate-500 font-mono mt-1">
-              Booth Serial No: <span className="font-bold text-brand-700 bg-brand-50 border border-brand-200 px-1.5 py-0.5 rounded">#{voter.boothSerialNumber || '—'}</span> • {voter.epicNumber ? `EPIC: ${voter.epicNumber} • ` : ''}Internal Ref: {id}
+              Booth Serial No: <span className="font-bold text-brand-700 bg-brand-50 border border-brand-200 px-1.5 py-0.5 rounded">#{voter.boothSerialNumber || '—'}</span> • {booth ? <span className="font-semibold text-slate-800">Polling Booth #{booth.officialBoothNumber} • </span> : ''}{voter.epicNumber ? `EPIC: ${voter.epicNumber} • ` : ''}Internal Ref: {id}
             </p>
           </div>
         </div>
@@ -270,6 +270,10 @@ export function VoterDetailsPage() {
               <div>
                 <span className="text-slate-400 block font-medium">Booth Serial No. (Primary)</span>
                 <span className="font-mono font-bold text-brand-700 text-sm">#{voter.boothSerialNumber || '—'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block font-medium">Polling Booth No.</span>
+                <span className="font-mono font-bold text-brand-700 text-sm">{booth ? `Booth #${booth.officialBoothNumber}` : 'Unassigned'}</span>
               </div>
               <div>
                 <span className="text-slate-400 block font-medium">Official EPIC No.</span>

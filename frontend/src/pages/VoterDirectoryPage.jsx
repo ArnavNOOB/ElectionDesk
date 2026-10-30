@@ -563,11 +563,16 @@ export function VoterDirectoryPage() {
                         </div>
                       </div>
 
-                      {/* Booth Serial Badge */}
+                      {/* Booth Serial & Polling Booth Badge */}
                       <div className="text-right flex-shrink-0">
                         <span className="inline-flex items-center px-2 py-0.5 rounded font-mono font-bold text-xs bg-brand-50 text-brand-800 border border-brand-200">
                           #{voter.boothSerialNumber || '—'}
                         </span>
+                        {booth && (
+                          <div className="text-[11px] font-semibold text-brand-700 mt-0.5">
+                            Booth #{booth.officialBoothNumber}
+                          </div>
+                        )}
                         {voter.epicNumber && (
                           <div className="text-[10px] font-mono text-slate-400 mt-0.5">
                             {voter.epicNumber}
@@ -678,11 +683,11 @@ export function VoterDirectoryPage() {
                         )}
                       </div>
                     </th>
+                    <th className="py-3 px-4 text-left">Polling Booth</th>
                     <th className="py-3 px-4 text-left">Voter Full Name</th>
                     <th className="py-3 px-4 text-left">Family Role</th>
                     <th className="py-3 px-4 text-left">Relative Name</th>
                     <th className="py-3 px-4 text-left">Age / Gender</th>
-                    <th className="py-3 px-4 text-left">Polling Booth</th>
                     <th className="py-3 px-4 text-left">Locality & City</th>
                     <th className="py-3 px-4 text-left">Status</th>
                     <th className="py-3 px-4 text-right">Actions</th>
@@ -721,6 +726,18 @@ export function VoterDirectoryPage() {
                             <div className="text-[10px] font-mono text-slate-400 mt-0.5">
                               EPIC: {voter.epicNumber}
                             </div>
+                          )}
+                        </td>
+
+                        {/* Polling Booth (Right after Booth Serial Number) */}
+                        <td className="py-2.5 px-4 text-slate-600 whitespace-nowrap">
+                          {booth ? (
+                            <span className="inline-flex items-center text-slate-800 font-medium">
+                              <MapPin className="h-3 w-3 mr-1 text-brand-600 flex-shrink-0" />
+                              Booth #{booth.officialBoothNumber}
+                            </span>
+                          ) : (
+                            <span className="text-amber-600 font-medium italic">Unassigned</span>
                           )}
                         </td>
 
@@ -767,18 +784,6 @@ export function VoterDirectoryPage() {
                         {/* Age / Gender */}
                         <td className="py-2.5 px-4 text-slate-600 whitespace-nowrap">
                           {voter.age} yrs • {voter.gender}
-                        </td>
-
-                        {/* Polling Booth */}
-                        <td className="py-2.5 px-4 text-slate-600 whitespace-nowrap">
-                          {booth ? (
-                            <span className="inline-flex items-center text-slate-800 font-medium">
-                              <MapPin className="h-3 w-3 mr-1 text-brand-600 flex-shrink-0" />
-                              Booth #{booth.officialBoothNumber}
-                            </span>
-                          ) : (
-                            <span className="text-amber-600 font-medium italic">Unassigned</span>
-                          )}
                         </td>
 
                         {/* Locality & PIN */}
