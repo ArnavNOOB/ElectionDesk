@@ -204,4 +204,157 @@ describe('Spreadsheet Import with Age and Gender Support', () => {
       expect(b.electoralArea).toBe('Ward 12');
     }
   });
+
+  it('detects intra-file duplicate booth serial numbers within the same polling booth', async () => {
+    const csvContent = [
+      'BOOTH_SERIAL_NO,BOOTH_NUMBER,FULL_NAME,RELATIVE_NAME,RELATION_TYPE,EPIC_NO',
+      '1,42,Harpreet Singh,Jagjit Singh,Father,PB1001',
+      '1,42,Manpreet Singh,Jagjit Singh,Father,PB1002', // Duplicate serial #1 in booth 42
+    ].join('\n');
+
+    const preview = await previewSpreadsheetImport(csvContent, 'duplicate_serials.csv');
+    expect(preview.totalRows).toBe(2);
+    expect(preview.duplicateCount).toBe(1);
+    expect(preview.cleanCount).toBe(1);
+    expect(preview.duplicateRows.length).toBe(1);
+
+    const dup = preview.duplicateRows[0];
+    expect(dup.row).toBe(3);
+    expect(dup.boothSerialNumber).toBe(1);
+    expect(dup.duplicateFlags).toContain('DUPLICATE_SERIAL_ID');
+    expect(dup.reason).toContain('Duplicate Booth Serial #1');
+    expect(dup.reason).toContain('Row #2');
+
+    // In validRows, row 2 should be flagged as duplicate
+    expect(preview.validRows[0].isDuplicate).toBe(false);
+    expect(preview.validRows[1].isDuplicate).toBe(true);
+    expect(preview.validRows[1].duplicateFlags).toContain('DUPLICATE_SERIAL_ID');
+  });
+
+  it('detects intra-file duplicate EPIC numbers', async () => {
+    const csvContent = [
+      'BOOTH_SERIAL_NO,BOOTH_NUMBER,FULL_NAME,RELATIVE_NAME,RELATION_TYPE,EPIC_NO',
+      '1,42,Harpreet Singh,Jagjit Singh,Father,PB9999999',
+      '2,43,Duplicate EPIC Person,Gurmel Singh,Father,PB9999999', // Duplicate EPIC
+    ].join('\n');
+
+    const preview = await previewSpreadsheetImport(csvContent, 'duplicate_epics.csv');
+    expect(preview.totalRows).toBe(2);
+    expect(preview.duplicateCount).toBe(1);
+    expect(preview.cleanCount).toBe(1);
+    expect(preview.duplicateRows.length).toBe(1);
+
+    const dup = preview.duplicateRows[0];
+    expect(dup.row).toBe(3);
+    expect(dup.epic).toBe('PB9999999');
+    expect(dup.duplicateFlags).toContain('DUPLICATE_EPIC_NUMBER');
+    expect(dup.reason).toContain('Duplicate EPIC number "PB9999999"');
+  });
+
+  it('detects duplicate records against existing database records', async () => {
+    // Insert an existing voter in booth 42 with serial 10 and EPIC 'PB5555555'
+    const booth42 = await dbStore.pollingStations.findOne({ officialBoothNumber: '42' });
+    await dbStore.voters.create({
+      boothSerialNumber: 10,
+      epicNumber: 'PB5555555',
+      fullName: 'Pre-existing Voter',
+      pollingStationId: booth42._id || booth42.id,
+      familyRole: 'SM',
+      city: 'Patiala',
+      district: 'Patiala',
+      state: 'Punjab',
+      address: { pinCode: '147001', city: 'Patiala', district: 'Patiala', state: 'Punjab' },
+    });
+
+    const csvContent = [
+      'BOOTH_SERIAL_NO,BOOTH_NUMBER,FULL_NAME,RELATIVE_NAME,RELATION_TYPE,EPIC_NO',
+      '10,42,Incoming Serial Conflict,Gurdit Singh,Father,PB1049281', // Serial 10 exists in booth 42
+      '20,43,Incoming EPIC Conflict,Mohan Lal,Father,PB5555555', // EPIC PB5555555 exists in DB
+    ].join('\n');
+
+    const preview = await previewSpreadsheetImport(csvContent, 'db_duplicates.csv');
+    expect(preview.duplicateCount).toBe(2);
+    expect(preview.cleanCount).toBe(0);
+
+    const serialDup = preview.duplicateRows.find((d) => d.boothSerialNumber === 10);
+    expect(serialDup).toBeDefined();
+    expect(serialDup.duplicateFlags).toContain('DUPLICATE_SERIAL_ID');
+    expect(serialDup.conflictWith).toContain('Database Record');
+
+    const epicDup = preview.duplicateRows.find((d) => d.epic === 'PB5555555');
+    expect(epicDup).toBeDefined();
+    expect(epicDup.duplicateFlags).toContain('DUPLICATE_EPIC_NUMBER');
+    expect(epicDup.conflictWith).toContain('Database Record');
+  });
+
+  it('commits spreadsheet with skipDuplicates: true by omitting duplicate records', async () => {
+    const csvContent = [
+      'BOOTH_SERIAL_NO,BOOTH_NUMBER,FULL_NAME,RELATIVE_NAME,RELATION_TYPE,EPIC_NO',
+      '1,42,Unique Voter A,Jagjit Singh,Father,PBA001',
+      '1,42,Duplicate Voter B,Jagjit Singh,Father,PBA002', // Intra-file duplicate serial
+    ].join('\n');
+
+    const preview = await previewSpreadsheetImport(csvContent);
+    expect(preview.validRows.length).toBe(2);
+    expect(preview.duplicateCount).toBe(1);
+
+    const actor = { _id: 'user_admin_01', username: 'admin', role: 'admin' };
+    const commitResult = await commitSpreadsheetImport(preview.validRows, actor, {
+      ipAddress: '127.0.0.1',
+    }, { skipDuplicates: true });
+
+    expect(commitResult.success).toBe(true);
+    expect(commitResult.importedCount).toBe(1);
+    expect(commitResult.skippedDuplicateCount).toBe(1);
+
+    // Only Voter A should exist in the database
+    const voterA = await dbStore.voters.findOne({ epicNumber: 'PBA001' });
+    expect(voterA).toBeDefined();
+    const voterB = await dbStore.voters.findOne({ epicNumber: 'PBA002' });
+    expect(voterB).toBeNull();
+  });
+
+  it('commits spreadsheet with duplicates flagged and updates existing conflicting voter', async () => {
+    const booth42 = await dbStore.pollingStations.findOne({ officialBoothNumber: '42' });
+    const existing = await dbStore.voters.create({
+      boothSerialNumber: 5,
+      epicNumber: 'PBEXIST5',
+      fullName: 'Original Booth 5 Voter',
+      pollingStationId: booth42._id || booth42.id,
+      familyRole: 'SM',
+      isDuplicate: false,
+      duplicateFlags: [],
+      dataQualityFlags: [],
+      address: { pinCode: '147001', city: 'Patiala', district: 'Patiala', state: 'Punjab' },
+    });
+
+    const csvContent = [
+      'BOOTH_SERIAL_NO,BOOTH_NUMBER,FULL_NAME,RELATIVE_NAME,RELATION_TYPE,EPIC_NO',
+      '5,42,Duplicate Incoming Voter,Surjit Singh,Father,PBINCOMING5',
+    ].join('\n');
+
+    const preview = await previewSpreadsheetImport(csvContent);
+    const actor = { _id: 'user_admin_01', username: 'admin', role: 'admin' };
+
+    const commitResult = await commitSpreadsheetImport(preview.validRows, actor, {
+      ipAddress: '127.0.0.1',
+    }, { skipDuplicates: false });
+
+    expect(commitResult.success).toBe(true);
+    expect(commitResult.importedCount).toBe(1);
+    expect(commitResult.flaggedDuplicateCount).toBe(1);
+
+    // Verify incoming voter is saved with duplicate flag
+    const incoming = await dbStore.voters.findOne({ epicNumber: 'PBINCOMING5' });
+    expect(incoming).toBeDefined();
+    expect(incoming.isDuplicate).toBe(true);
+    expect(incoming.duplicateFlags).toContain('DUPLICATE_SERIAL_ID');
+    expect(incoming.dataQualityFlags).toContain('DUPLICATE_SERIAL_ID');
+
+    // Verify original existing voter is ALSO updated with duplicate flag
+    const updatedOriginal = await dbStore.voters.findById(existing._id || existing.id);
+    expect(updatedOriginal.isDuplicate).toBe(true);
+    expect(updatedOriginal.duplicateFlags).toContain('DUPLICATE_SERIAL_ID');
+    expect(updatedOriginal.dataQualityFlags).toContain('DUPLICATE_SERIAL_ID');
+  });
 });

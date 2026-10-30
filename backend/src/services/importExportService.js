@@ -281,8 +281,14 @@ export async function previewSpreadsheetImport(bufferOrContent, filename = '') {
     if (normKey) boothMap.set(normKey, b._id || b.id);
   });
 
+  // Track seen identifiers within the uploaded spreadsheet to detect intra-file duplicates
+  const seenBoothSerials = new Map(); // key: `${boothKey}:${boothSerialNumber}` => { row, name, epic }
+  const seenEpics = new Map(); // key: epic => { row, name, boothSerialNumber, boothNumber }
+  const seenNames = new Map(); // key: `${fullName}:${relativeName}` => { row, name }
+
   for (let idx = 0; idx < rawRows.length; idx++) {
     const row = rawRows[idx];
+    const rowNumber = row.index || idx + 1;
     const rowErrors = [];
 
     // Parse primary Booth Serial Number
@@ -315,7 +321,7 @@ export async function previewSpreadsheetImport(bufferOrContent, filename = '') {
 
     if (rowErrors.length > 0) {
       errors.push({
-        row: row.index,
+        row: rowNumber,
         boothSerialNumber: boothSerialNumber || idx + 1,
         epic: epic || 'N/A',
         name: fullName || 'N/A',
@@ -324,39 +330,111 @@ export async function previewSpreadsheetImport(bufferOrContent, filename = '') {
       continue;
     }
 
-    // Check duplicate Booth Serial Number within same polling booth in DB
-    if (boothId) {
-      const existingInBooth = await dbStore.voters.findOne({
-        pollingStationId: boothId,
-        boothSerialNumber,
-        isArchived: false,
-      });
-      if (existingInBooth) {
-        duplicateRows.push({
-          row: row.index,
+    // Duplicate detection flags & reasons
+    const rowDuplicateFlags = [];
+    const rowDuplicateReasons = [];
+    const conflictSources = [];
+    let existingDbId = null;
+
+    const boothKey = boothId || boothNumber;
+
+    // 1. Check Booth Serial ID duplicate (Intra-file duplicate check)
+    if (boothKey && boothSerialNumber) {
+      const serialMapKey = `${boothKey}:${boothSerialNumber}`;
+      if (seenBoothSerials.has(serialMapKey)) {
+        const prior = seenBoothSerials.get(serialMapKey);
+        rowDuplicateFlags.push('DUPLICATE_SERIAL_ID');
+        rowDuplicateReasons.push(
+          `Duplicate Booth Serial #${boothSerialNumber} in Polling Booth "${boothNumber || 'Selected'}" (matches Spreadsheet Row #${prior.row} - ${prior.name})`
+        );
+        conflictSources.push(`Spreadsheet Row #${prior.row} (${prior.name})`);
+      } else {
+        seenBoothSerials.set(serialMapKey, { row: rowNumber, name: fullName, epic });
+      }
+
+      // Check against Database for existing voter with same boothSerialNumber in booth
+      if (boothId) {
+        const existingInBooth = await dbStore.voters.findOne({
+          pollingStationId: boothId,
           boothSerialNumber,
-          name: fullName,
-          existingId: existingInBooth._id || existingInBooth.id,
-          reason: `Booth Serial #${boothSerialNumber} already registered in Polling Booth "${boothNumber}"`,
+          isArchived: false,
         });
-        continue;
+        if (existingInBooth) {
+          if (!rowDuplicateFlags.includes('DUPLICATE_SERIAL_ID')) {
+            rowDuplicateFlags.push('DUPLICATE_SERIAL_ID');
+          }
+          rowDuplicateReasons.push(
+            `Booth Serial #${boothSerialNumber} already registered in Polling Booth "${boothNumber}" (to ${existingInBooth.fullName})`
+          );
+          conflictSources.push(`Database Record #${existingInBooth.boothSerialNumber} (${existingInBooth.fullName})`);
+          existingDbId = existingInBooth._id || existingInBooth.id;
+        }
       }
     }
 
-    // Check duplicate EPIC if provided
+    // 2. Check EPIC Number duplicate (Intra-file duplicate check)
     if (epic) {
+      if (seenEpics.has(epic)) {
+        const prior = seenEpics.get(epic);
+        if (!rowDuplicateFlags.includes('DUPLICATE_EPIC_NUMBER')) {
+          rowDuplicateFlags.push('DUPLICATE_EPIC_NUMBER');
+        }
+        rowDuplicateReasons.push(
+          `Duplicate EPIC number "${epic}" within this file (matches Spreadsheet Row #${prior.row} - ${prior.name})`
+        );
+        conflictSources.push(`Spreadsheet Row #${prior.row} (${prior.name})`);
+      } else {
+        seenEpics.set(epic, { row: rowNumber, name: fullName, boothSerialNumber, boothNumber });
+      }
+
+      // Check against Database for existing voter with same EPIC
       const existingEpic = await dbStore.voters.findOne({ epicNumber: epic, isArchived: false });
       if (existingEpic) {
-        duplicateRows.push({
-          row: row.index,
-          boothSerialNumber,
-          epic,
-          name: fullName,
-          existingId: existingEpic._id || existingEpic.id,
-          reason: `EPIC number ${epic} is already registered in the database`,
-        });
-        continue;
+        if (!rowDuplicateFlags.includes('DUPLICATE_EPIC_NUMBER')) {
+          rowDuplicateFlags.push('DUPLICATE_EPIC_NUMBER');
+        }
+        rowDuplicateReasons.push(
+          `EPIC number "${epic}" is already registered in database (to ${existingEpic.fullName})`
+        );
+        conflictSources.push(`Database Record (${existingEpic.fullName})`);
+        existingDbId = existingDbId || existingEpic._id || existingEpic.id;
       }
+    }
+
+    // 3. Check Name + Relative Name duplicate (Intra-file potential duplicate)
+    const relName = (row.RELATIVE_NAME || '').trim();
+    if (fullName && relName) {
+      const nameKey = `${fullName.toLowerCase()}:${relName.toLowerCase()}`;
+      if (seenNames.has(nameKey)) {
+        const prior = seenNames.get(nameKey);
+        if (rowDuplicateFlags.length === 0) {
+          rowDuplicateFlags.push('POTENTIAL_DUPLICATE_DETECTED');
+          rowDuplicateReasons.push(
+            `Identical Full Name "${fullName}" & Relative "${relName}" (matches Spreadsheet Row #${prior.row})`
+          );
+          conflictSources.push(`Spreadsheet Row #${prior.row} (${prior.name})`);
+        }
+      } else {
+        seenNames.set(nameKey, { row: rowNumber, name: fullName });
+      }
+    }
+
+    const isDuplicate = rowDuplicateFlags.length > 0;
+
+    if (isDuplicate) {
+      duplicateRows.push({
+        row: rowNumber,
+        boothSerialNumber,
+        boothNumber: boothNumber || 'N/A',
+        epic: epic || '—',
+        name: fullName,
+        relativeName: relName || '—',
+        duplicateType: rowDuplicateFlags.join(', '),
+        duplicateFlags: rowDuplicateFlags,
+        reason: rowDuplicateReasons.join(' | '),
+        conflictWith: conflictSources.join('; ') || 'Conflict Detected',
+        existingId: existingDbId,
+      });
     }
 
     // Parse familyRole and familyHeadSerial
@@ -368,11 +446,12 @@ export async function previewSpreadsheetImport(bufferOrContent, filename = '') {
     const mobileNumber = (row.MOBILE_NUMBER || row.MOBILE || row.PHONE || row.PHONE_NUMBER || '').trim();
 
     validRows.push({
+      rowNumber,
       boothSerialNumber,
       epicNumber: epic,
       fullName,
       mobileNumber,
-      relativeName: row.RELATIVE_NAME || '',
+      relativeName: relName,
       relationType: ['Father', 'Mother', 'Husband', 'Other'].includes(row.RELATION_TYPE)
         ? row.RELATION_TYPE
         : 'Father',
@@ -394,13 +473,20 @@ export async function previewSpreadsheetImport(bufferOrContent, filename = '') {
         verified: false,
       },
       pollingStationId: boothId,
-      verificationStatus: 'Pending_Verification',
+      boothNumber: boothNumber || '',
+      isDuplicate,
+      duplicateFlags: rowDuplicateFlags,
+      duplicateReason: isDuplicate ? rowDuplicateReasons.join(' | ') : null,
+      verificationStatus: 'Verified',
     });
   }
+
+  const cleanCount = validRows.filter((r) => !r.isDuplicate).length;
 
   return {
     totalRows: rawRows.length,
     validCount: validRows.length,
+    cleanCount,
     duplicateCount: duplicateRows.length,
     errorCount: errors.length,
     validRows, // Returns all validated rows for commit (supports up to 1,500+ records)
@@ -413,42 +499,97 @@ export async function previewSpreadsheetImport(bufferOrContent, filename = '') {
 export const previewCsvImport = previewSpreadsheetImport;
 
 /**
- * Commit validated rows with automatic Family Head linking
+ * Commit validated rows with automatic Family Head linking and duplicate record management
  */
-export async function commitCsvImport(rows, actor, reqMeta = {}) {
+export async function commitCsvImport(rows, actor, reqMeta = {}, options = {}) {
+  const skipDuplicates = Boolean(options.skipDuplicates);
   let importedCount = 0;
+  let flaggedDuplicateCount = 0;
+  let skippedDuplicateCount = 0;
   const createdIds = [];
   const headMap = new Map(); // key: `${pollingStationId}:${boothSerialNumber}` => voterId
   const boothCountMap = new Map(); // key: boothId => incremental voterCount
 
+  // If user selected to skip duplicates, filter them out before processing
+  let targetRows = rows;
+  if (skipDuplicates) {
+    targetRows = rows.filter((r) => !r.isDuplicate);
+    skippedDuplicateCount = rows.length - targetRows.length;
+  }
+
   // Pass 1: Insert Family Heads (FH) and Single Members (SM)
-  const nonMemberRows = rows.filter((r) => r.familyRole !== 'FM');
-  const memberRows = rows.filter((r) => r.familyRole === 'FM');
+  const nonMemberRows = targetRows.filter((r) => r.familyRole !== 'FM');
+  const memberRows = targetRows.filter((r) => r.familyRole === 'FM');
 
   for (const row of nonMemberRows) {
+    const conflictingDbVoters = [];
+
     if (row.pollingStationId && row.boothSerialNumber) {
-      const existing = await dbStore.voters.findOne({
+      const existingInBooth = await dbStore.voters.findOne({
         pollingStationId: row.pollingStationId,
         boothSerialNumber: row.boothSerialNumber,
         isArchived: false,
       });
-      if (existing) {
-        if (existing.familyRole === 'FH') {
+      if (existingInBooth) {
+        if (existingInBooth.familyRole === 'FH') {
           headMap.set(
             `${row.pollingStationId}:${row.boothSerialNumber}`,
-            existing._id || existing.id
+            existingInBooth._id || existingInBooth.id
           );
         }
-        continue;
+        conflictingDbVoters.push({ voter: existingInBooth, flag: 'DUPLICATE_SERIAL_ID' });
       }
     }
 
-    const { familyHeadSerial, ...cleanData } = row;
-    const dataQualityFlags = evaluateDataQuality(cleanData);
+    if (row.epicNumber) {
+      const existingEpic = await dbStore.voters.findOne({
+        epicNumber: row.epicNumber,
+        isArchived: false,
+      });
+      if (existingEpic) {
+        conflictingDbVoters.push({ voter: existingEpic, flag: 'DUPLICATE_EPIC_NUMBER' });
+      }
+    }
+
+    // Aggregate duplicate flags from preview and conflicting DB records
+    const rowDupFlags = Array.from(new Set([
+      ...(row.duplicateFlags || []),
+      ...conflictingDbVoters.map((c) => c.flag),
+    ]));
+    const isRowDuplicate = row.isDuplicate || rowDupFlags.length > 0;
+    if (isRowDuplicate) flaggedDuplicateCount++;
+
+    // Flag conflicting existing DB records so both records appear in Data Quality review
+    for (const { voter: ev, flag } of conflictingDbVoters) {
+      const evDupFlags = Array.isArray(ev.duplicateFlags) ? ev.duplicateFlags : [];
+      const evDqFlags = Array.isArray(ev.dataQualityFlags) ? ev.dataQualityFlags : [];
+      await dbStore.voters.updateOne(
+        { _id: ev._id || ev.id },
+        {
+          $set: {
+            isDuplicate: true,
+            duplicateFlags: Array.from(new Set([...evDupFlags, flag])),
+            dataQualityFlags: Array.from(new Set([...evDqFlags, flag])),
+            updatedBy: actor?._id || actor?.id,
+          },
+        }
+      );
+    }
+
+    const { familyHeadSerial, rowNumber, boothNumber, duplicateReason, ...cleanData } = row;
+    const dataQualityFlags = evaluateDataQuality({
+      ...cleanData,
+      isDuplicate: isRowDuplicate,
+      duplicateFlags: rowDupFlags,
+    });
+
     const newVoter = await dbStore.voters.create({
       ...cleanData,
       familyRole: cleanData.familyRole || 'SM',
       familyHeadId: null,
+      verificationStatus: 'Verified',
+      isDuplicate: isRowDuplicate,
+      duplicateFlags: rowDupFlags,
       dataQualityFlags,
       createdBy: actor?._id || actor?.id,
       updatedBy: actor?._id || actor?.id,
@@ -470,13 +611,50 @@ export async function commitCsvImport(rows, actor, reqMeta = {}) {
 
   // Pass 2: Insert Family Members (FM) and link to corresponding Family Head
   for (const row of memberRows) {
+    const conflictingDbVoters = [];
+
     if (row.pollingStationId && row.boothSerialNumber) {
-      const existing = await dbStore.voters.findOne({
+      const existingInBooth = await dbStore.voters.findOne({
         pollingStationId: row.pollingStationId,
         boothSerialNumber: row.boothSerialNumber,
         isArchived: false,
       });
-      if (existing) continue;
+      if (existingInBooth) {
+        conflictingDbVoters.push({ voter: existingInBooth, flag: 'DUPLICATE_SERIAL_ID' });
+      }
+    }
+
+    if (row.epicNumber) {
+      const existingEpic = await dbStore.voters.findOne({
+        epicNumber: row.epicNumber,
+        isArchived: false,
+      });
+      if (existingEpic) {
+        conflictingDbVoters.push({ voter: existingEpic, flag: 'DUPLICATE_EPIC_NUMBER' });
+      }
+    }
+
+    const rowDupFlags = Array.from(new Set([
+      ...(row.duplicateFlags || []),
+      ...conflictingDbVoters.map((c) => c.flag),
+    ]));
+    const isRowDuplicate = row.isDuplicate || rowDupFlags.length > 0;
+    if (isRowDuplicate) flaggedDuplicateCount++;
+
+    for (const { voter: ev, flag } of conflictingDbVoters) {
+      const evDupFlags = Array.isArray(ev.duplicateFlags) ? ev.duplicateFlags : [];
+      const evDqFlags = Array.isArray(ev.dataQualityFlags) ? ev.dataQualityFlags : [];
+      await dbStore.voters.updateOne(
+        { _id: ev._id || ev.id },
+        {
+          $set: {
+            isDuplicate: true,
+            duplicateFlags: Array.from(new Set([...evDupFlags, flag])),
+            dataQualityFlags: Array.from(new Set([...evDqFlags, flag])),
+            updatedBy: actor?._id || actor?.id,
+          },
+        }
+      );
     }
 
     let resolvedHeadId = null;
@@ -497,8 +675,12 @@ export async function commitCsvImport(rows, actor, reqMeta = {}) {
       }
     }
 
-    const { familyHeadSerial, ...cleanData } = row;
-    const dataQualityFlags = evaluateDataQuality(cleanData);
+    const { familyHeadSerial, rowNumber, boothNumber, duplicateReason, ...cleanData } = row;
+    const dataQualityFlags = evaluateDataQuality({
+      ...cleanData,
+      isDuplicate: isRowDuplicate,
+      duplicateFlags: rowDupFlags,
+    });
     if (!resolvedHeadId) {
       dataQualityFlags.push('UNLINKED_FAMILY_MEMBER');
     }
@@ -507,6 +689,9 @@ export async function commitCsvImport(rows, actor, reqMeta = {}) {
       ...cleanData,
       familyRole: 'FM',
       familyHeadId: resolvedHeadId,
+      verificationStatus: 'Verified',
+      isDuplicate: isRowDuplicate,
+      duplicateFlags: rowDupFlags,
       dataQualityFlags,
       createdBy: actor?._id || actor?.id,
       updatedBy: actor?._id || actor?.id,
@@ -539,18 +724,21 @@ export async function commitCsvImport(rows, actor, reqMeta = {}) {
     details: {
       importedCount,
       totalRequested: rows.length,
+      flaggedDuplicateCount,
+      skippedDuplicateCount,
     },
   });
 
   return {
     success: true,
     importedCount,
+    flaggedDuplicateCount,
+    skippedDuplicateCount,
   };
 }
 
-/**
- * Export voter data with CSV formula injection neutralization
- */
+
+
 export async function exportVotersToCsv({ filter = {}, actor, reqMeta = {} }) {
   const MAX_EXPORT_LIMIT = 5000;
   const { records } = await dbStore.voters.query({

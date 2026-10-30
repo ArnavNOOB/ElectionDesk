@@ -39,15 +39,20 @@ export async function handleDownloadTemplate(req, res, next) {
 
 export async function handleCommitImport(req, res, next) {
   try {
-    const { rows } = req.body;
+    const { rows, skipDuplicates } = req.body;
     if (!rows || !Array.isArray(rows) || rows.length === 0) {
       return ApiResponse.error(res, 'No validated rows provided for commit', 400, 'NO_ROWS');
     }
 
-    const result = await commitSpreadsheetImport(rows, req.user, {
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-    });
+    const result = await commitSpreadsheetImport(
+      rows,
+      req.user,
+      {
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      },
+      { skipDuplicates: Boolean(skipDuplicates) }
+    );
 
     return ApiResponse.success(res, result, `Successfully imported ${result.importedCount} voter records`);
   } catch (error) {

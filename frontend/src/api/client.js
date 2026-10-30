@@ -103,7 +103,7 @@ export const importExportApi = {
     api.post('/import-export/preview', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
-  commitImport: (rows) => api.post('/import-export/commit', { rows }),
+  commitImport: (rows, options = {}) => api.post('/import-export/commit', { rows, skipDuplicates: Boolean(options?.skipDuplicates) }),
   exportVoters: (params, stepUpToken) =>
     api.get('/import-export/voters', {
       params,
